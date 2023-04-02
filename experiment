@@ -1,0 +1,95 @@
+import matplotlib.pyplot as plt
+import numpy             as np
+import pandas            as pd
+import scipy.optimize    as opt
+import scipy.stats       as stats
+
+plt.rcParams['text.usetex'     ] = True
+plt.rcParams['font.family'     ] = 'sans-serif'
+
+plt.rcParams['axes.titlesize'  ] = 16
+plt.rcParams['xtick.labelsize' ] = 18
+plt.rcParams['ytick.labelsize' ] = 18
+plt.rcParams['legend.fontsize' ] = 16
+
+plt.rcParams['axes.grid'       ] = True
+plt.rcParams['grid.linestyle'  ] = '-'
+plt.rcParams['grid.linewidth'  ] = 0.5
+plt.rcParams['grid.color'      ] = 'grey'
+
+class IVAN():
+
+    def __init__(self, sample):
+        self.sample    = sample
+        self.params    = None
+
+    def ecdf(self):
+        n = self.sample.size
+        return np.arange(1.0, n+1.0) / (n+1.0)
+
+    def cdf(self,y,params):
+        delta = params[0]
+        beta  = params[1]
+        return stats.weibull_min.cdf(y, delta, scale=beta)
+
+    def residuals      (self,params1):
+        return np.log(-np.log(1.0-self.ecdf())) - (params1[0]*np.log(self.sample)+params1[1])
+    def objective(self,params1):
+        return 0.5*np.sum(np.power(self.residuals(params1),2))
+    def fit(self,start_params1=None):
+        if start_params1 is None:
+            a_start      = 0.0
+            b_start      = 0.0
+            start_params1 = np.array([a_start,b_start])
+        result = opt.minimize(self.objective,start_params1, \
+                              method ='nelder-mead'       , \
+                              options={'disp': False})
+        
+        self.params = [result.x[0], np.exp(-result.x[1]/result.x[0])]
+        
+        
+        
+        return self.params
+
+def main():
+    
+    data = pd.read_csv('good_days.csv', sep = ';')
+    
+    sample = data['good_days'].values
+    
+    sample = np.sort(sample)
+    
+    model   = IVAN(sample)    
+    
+    delta, beta     = model.fit()
+        
+    fig = plt.figure()
+    ax  = fig.add_subplot(111)
+    
+    ax.plot(np.log(-np.log(1.0-model.ecdf())), np.log(model.sample),
+            label='emperical', linestyle='None', marker='o', color='red'  )
+    
+    
+    
+    X = np.linspace(model.sample[0],model.sample[-1],100)    
+    ax.plot(np.log(-np.log(1.0-model.cdf(X,[delta,beta]))), np.log(X),
+            label='weibull', linestyle='-', marker='', color='black')
+    
+    y      = np.log(np.log(1.0/(1.0-model.ecdf())))
+    N      = len(y)
+    y_mean = np.sum(y)/N
+    
+    f      = np.log(np.log(1.0/(1.0-model.cdf(model.sample,[delta,beta]))))
+    SStot  = np.sum(np.power(y-y_mean*np.ones_like(y),2))
+    SSres  = np.sum(np.power(y-f,2))
+    
+    R2     = 1.0-SSres/SStot
+    
+    ax.text(0.5,0.1,r'$R^2={value:.3f}$'.format(value=R2),
+            horizontalalignment = 'center', fontsize=18, color='blue', transform=ax.transAxes)
+    
+    plt.show()
+
+if __name__ == '__main__':
+    main()
+
